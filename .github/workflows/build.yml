@@ -1,0 +1,107 @@
+name: Build CLI Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., v1.0.0)"
+        required: false
+        default: "dev"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14 # Apple Silicon
+            platform: darwin
+            arch: arm64
+          - os: macos-13 # Intel
+            platform: darwin
+            arch: amd64
+          - os: ubuntu-latest
+            platform: linux
+            arch: amd64
+          # Note: Linux arm64 would need self-hosted runner or QEMU
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd browser-sync-cli
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Install Playwright browsers
+        run: |
+          cd browser-sync-cli
+          playwright install chromium
+
+      - name: Build binary
+        run: |
+          cd browser-sync-cli
+
+          # Get the Playwright driver path
+          PLAYWRIGHT_BROWSERS_PATH=$(python -c "import playwright; print(playwright.__file__.replace('__init__.py', 'driver'))")
+
+          echo "Playwright path: $PLAYWRIGHT_BROWSERS_PATH"
+
+          # Build with PyInstaller
+          pyinstaller \
+            --onefile \
+            --name hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }} \
+            --add-data "${PLAYWRIGHT_BROWSERS_PATH}:playwright/driver" \
+            --hidden-import playwright \
+            --hidden-import playwright.sync_api \
+            --collect-all playwright \
+            main.py
+
+      - name: Test binary
+        run: |
+          cd browser-sync-cli
+          ./dist/hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }} --help || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }}
+          path: browser-sync-cli/dist/hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }}*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: binaries
+          merge-multiple: true
+
+      - name: List binaries
+        run: ls -la binaries/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: binaries/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
