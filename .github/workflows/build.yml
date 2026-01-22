@@ -43,20 +43,15 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd browser-sync-cli
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
       - name: Install Playwright browsers
-        run: |
-          cd browser-sync-cli
-          playwright install chromium
+        run: playwright install chromium
 
       - name: Build binary
         run: |
-          cd browser-sync-cli
-
           # Get the Playwright driver path
           PLAYWRIGHT_BROWSERS_PATH=$(python -c "import playwright; print(playwright.__file__.replace('__init__.py', 'driver'))")
 
@@ -73,15 +68,13 @@ jobs:
             main.py
 
       - name: Test binary
-        run: |
-          cd browser-sync-cli
-          ./dist/hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }} --help || true
+        run: ./dist/hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }} --help || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }}
-          path: browser-sync-cli/dist/hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }}*
+          path: dist/hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }}*
 
   release:
     needs: build
