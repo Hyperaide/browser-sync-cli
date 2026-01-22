@@ -236,6 +236,7 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
         # Launch browser with persistent context for cookie storage
         browser = p.chromium.launch(
             headless=False,
+            channel="chrome",  # Use system Chrome instead of bundled Chromium
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",

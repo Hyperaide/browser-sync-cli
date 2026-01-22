@@ -47,21 +47,12 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Install Playwright browsers
-        run: playwright install chromium
-
       - name: Build binary
         run: |
-          # Get the Playwright driver path
-          PLAYWRIGHT_BROWSERS_PATH=$(python -c "import playwright; print(playwright.__file__.replace('__init__.py', 'driver'))")
-
-          echo "Playwright path: $PLAYWRIGHT_BROWSERS_PATH"
-
-          # Build with PyInstaller
+          # Build with PyInstaller - uses system Chrome at runtime (channel="chrome")
           pyinstaller \
             --onefile \
             --name hyperaide-sync-${{ matrix.platform }}-${{ matrix.arch }} \
-            --add-data "${PLAYWRIGHT_BROWSERS_PATH}:playwright/driver" \
             --hidden-import playwright \
             --hidden-import playwright.sync_api \
             --collect-all playwright \
