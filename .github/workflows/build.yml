@@ -19,7 +19,7 @@ jobs:
           - os: macos-14 # Apple Silicon
             platform: darwin
             arch: arm64
-          - os: macos-13 # Intel
+          - os: macos-15-intel # Intel (macos-13 deprecated Dec 2025)
             platform: darwin
             arch: amd64
           - os: ubuntu-latest
