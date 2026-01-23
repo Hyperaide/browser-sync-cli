@@ -138,15 +138,18 @@ def get_api_key() -> Optional[str]:
     return os.environ.get("HYPERAIDE_API_KEY")
 
 
-def prompt_for_api_key() -> str:
-    """Prompt user for API key."""
-    console.print()
-    console.print("[bold]Enter your HyperAide API key[/bold]")
-    console.print("[dim]You can find your API key at https://hyperaide.com/developer[/dim]")
-    console.print()
+def require_api_key(api_key: Optional[str]) -> str:
+    """Require API key from argument or environment, exit if missing."""
+    if api_key:
+        return api_key
     
-    api_key = typer.prompt("API Key", hide_input=True)
-    return api_key.strip()
+    env_key = get_api_key()
+    if env_key:
+        return env_key
+    
+    console.print("[red]Error: HYPERAIDE_API_KEY environment variable is required.[/red]")
+    console.print("[dim]Usage: HYPERAIDE_API_KEY=your_key hyperaide-sync[/dim]")
+    sys.exit(1)
 
 
 def validate_api_key(api_key: str) -> dict:
@@ -287,6 +290,7 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
                     time.sleep(0.5)
                 except Exception:
                     break
+            console.print("\n[green]Browser closed. Processing...[/green]")
         except KeyboardInterrupt:
             console.print("\n[yellow]Sync cancelled by user.[/yellow]")
         
@@ -387,12 +391,8 @@ def sync_browser_auth(api_key: Optional[str] = None):
         border_style="cyan",
     ))
     
-    # Get API key
-    if not api_key:
-        api_key = get_api_key()
-    
-    if not api_key:
-        api_key = prompt_for_api_key()
+    # Require API key
+    api_key = require_api_key(api_key)
     
     # Validate API key and start sync session
     start_result = validate_api_key(api_key)
@@ -424,8 +424,17 @@ def sync_browser_auth(api_key: Optional[str] = None):
     # Run browser session
     cookies, visited_domains = run_browser_session()
     
-    console.print()
-    console.print(f"[dim]Captured {len(cookies)} auth cookies from {len(visited_domains)} domains[/dim]")
+    # Display captured sites
+    if visited_domains:
+        table = Table(title="Sites Captured")
+        table.add_column("Domain", style="cyan")
+        for domain in sorted(visited_domains):
+            table.add_row(domain)
+        console.print()
+        console.print(table)
+        console.print(f"\n[dim]Found {len(cookies)} auth cookies[/dim]")
+    else:
+        console.print("\n[yellow]No sites were visited.[/yellow]")
     
     # Complete sync
     result = complete_sync(api_key, cookies, visited_domains)
@@ -455,12 +464,8 @@ def reset(
     Reset your browser sync and disconnect all sites.
     """
     
-    # Get API key
-    if not api_key:
-        api_key = get_api_key()
-    
-    if not api_key:
-        api_key = prompt_for_api_key()
+    # Require API key
+    api_key = require_api_key(api_key)
     
     # Confirm reset
     if not force:
@@ -521,12 +526,8 @@ def status(
     Check your current browser sync status.
     """
     
-    # Get API key
-    if not api_key:
-        api_key = get_api_key()
-    
-    if not api_key:
-        api_key = prompt_for_api_key()
+    # Require API key
+    api_key = require_api_key(api_key)
     
     api_url = get_api_url()
     
