@@ -226,19 +226,12 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
     """
     visited_domains: set[str] = set()
     cookies = []
-    
-    # Track if the user clicked the sync button in the browser
-    sync_requested = False
-    
-    def on_sync_request():
-        nonlocal sync_requested
-        sync_requested = True
 
     console.print()
     console.print(Panel(
         "[bold green]Opening browser...[/bold green]\n\n"
         "Log into the sites you want HyperAide to access.\n"
-        "Click the [bold]Close & Sync[/bold] button in the browser when done.",
+        "Close the browser when you're done to sync your authentication.",
         title="Browser Session",
     ))
     
@@ -258,50 +251,6 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
             viewport={"width": 1280, "height": 800},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
-        
-        # 1. Allow the browser to signal "Sync" to Python
-        context.expose_function("hyperaideCompleteSync", lambda: on_sync_request())
-        
-        # 2. Inject the floating button into every page
-        context.add_init_script("""
-            window.addEventListener('DOMContentLoaded', () => {
-                // Only add button to the top-level frame (not iframes)
-                if (window.self === window.top) {
-                    const btn = document.createElement('div');
-                    btn.innerHTML = 'Close & Sync';
-                    Object.assign(btn.style, {
-                        position: 'fixed',
-                        bottom: '20px',
-                        right: '20px',
-                        zIndex: '2147483647', // Max z-index
-                        padding: '12px 24px',
-                        backgroundColor: '#111',
-                        color: 'white',
-                        border: '1px solid #333',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                        fontSize: '14px',
-                        fontWeight: '600',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                        transition: 'transform 0.2s ease, opacity 0.2s ease',
-                        userSelect: 'none'
-                    });
-                    
-                    btn.onmouseover = () => btn.style.transform = 'translateY(-2px)';
-                    btn.onmouseout = () => btn.style.transform = 'translateY(0)';
-                    
-                    btn.onclick = () => {
-                        btn.innerHTML = 'Syncing...';
-                        btn.style.opacity = '0.8';
-                        btn.style.pointerEvents = 'none';
-                        window.hyperaideCompleteSync();
-                    };
-                    
-                    document.body.appendChild(btn);
-                }
-            });
-        """)
         
         # Track page navigations
         def on_page_created(page):
@@ -326,21 +275,15 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
                 <html><body style="font-family: system-ui; padding: 40px; background: #1a1a2e; color: white;">
                 <h1>HyperAide Browser Sync</h1>
                 <p>Open new tabs and log into the sites you want HyperAide to access.</p>
-                <p><strong>Click the 'Close & Sync' button when done.</strong></p>
+                <p><strong>Close the browser when you're done to sync your authentication.</strong></p>
                 </body></html>
             """)
 
-        # Wait for browser to be closed by user OR button click
+        # Wait for browser to be closed by user
         try:
             while True:
                 try:
-                    # Case A: User clicked the button in the browser
-                    if sync_requested:
-                        console.print("\n[green]Sync requested via button...[/green]")
-                        cookies = context.cookies()
-                        break
-                    
-                    # Case B: User manually closed the window
+                    # User manually closed the window
                     if not context.pages:
                         break
 
@@ -351,8 +294,7 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
                     # Browser process killed/crashed
                     break
             
-            if not sync_requested:
-                console.print("\n[green]Browser closed. Processing...[/green]")
+            console.print("\n[green]Browser closed. Processing...[/green]")
                 
         except KeyboardInterrupt:
             console.print("\n[yellow]Sync cancelled by user.[/yellow]")
@@ -394,7 +336,13 @@ def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str])
                 timeout=60,
             )
             
-            if response.status_code != 200:
+            if response.status_code == 400:
+                error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+                error_msg = error_data.get("error", "No cookies provided")
+                console.print(f"[yellow]Sync skipped: {error_msg}[/yellow]")
+                console.print("[dim]No changes were made to your sync.[/dim]")
+                return {"connected_sites": []}
+            elif response.status_code != 200:
                 console.print(f"[red]Failed to complete sync: {response.status_code}[/red]")
                 console.print(f"[dim]{response.text}[/dim]")
                 sys.exit(1)
@@ -498,6 +446,17 @@ def sync_browser_auth(api_key: Optional[str] = None):
         console.print(f"\n[dim]Found {len(cookies)} auth cookies[/dim]")
     else:
         console.print("\n[yellow]No sites were visited.[/yellow]")
+    
+    # Check if we have any cookies before syncing
+    if not cookies:
+        console.print()
+        console.print(Panel(
+            "[yellow]No authentication cookies were captured.[/yellow]\n\n"
+            "Make sure you logged into sites before closing the browser.\n"
+            "No changes were made to your sync.",
+            title="No Cookies Found",
+        ))
+        return
     
     # Complete sync
     result = complete_sync(api_key, cookies, visited_domains)
