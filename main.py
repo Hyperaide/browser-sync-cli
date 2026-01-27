@@ -41,8 +41,21 @@ import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.rule import Rule
 from rich.table import Table
+from rich.theme import Theme
 from playwright.sync_api import sync_playwright
+
+THEME = Theme(
+    {
+        "info": "cyan",
+        "warning": "yellow",
+        "danger": "red",
+        "success": "green",
+        "muted": "dim",
+        "accent": "bold cyan",
+    }
+)
 
 # Initialize Typer app and Rich console
 app = typer.Typer(
@@ -51,7 +64,7 @@ app = typer.Typer(
     add_completion=False,
     invoke_without_command=True,  # Allow running without subcommand
 )
-console = Console()
+console = Console(theme=THEME)
 
 # Global dev flag (set via callback)
 _dev_mode = False
@@ -147,9 +160,47 @@ def require_api_key(api_key: Optional[str]) -> str:
     if env_key:
         return env_key
     
-    console.print("[red]Error: HYPERAIDE_API_KEY environment variable is required.[/red]")
-    console.print("[dim]Usage: HYPERAIDE_API_KEY=your_key hyperaide-sync[/dim]")
+    console.print("[danger]Missing API key.[/danger]")
+    console.print("[muted]Usage: HYPERAIDE_API_KEY=your_key hyperaide-sync[/muted]")
     sys.exit(1)
+
+
+def print_panel(message: str, title: str, style: str = "info", subtitle: str | None = None) -> None:
+    """Render a consistent panel style."""
+    console.print(
+        Panel(
+            message,
+            title=title,
+            border_style=style,
+            subtitle=subtitle,
+        )
+    )
+
+
+def render_section(title: str) -> None:
+    console.print()
+    console.print(Rule(title, style="muted"))
+
+
+def build_sites_table(
+    sites: list[dict],
+    title: str,
+    include_status: bool = False,
+) -> Table:
+    table = Table(title=title)
+    table.add_column("Site", style="accent")
+    table.add_column("Domain", style="muted")
+    if include_status:
+        table.add_column("Status", style="success")
+    for site in sites:
+        row = [
+            site.get("display_name", site.get("domain")),
+            site.get("domain"),
+        ]
+        if include_status:
+            row.append(site.get("status", "active"))
+        table.add_row(*row)
+    return table
 
 
 def validate_api_key(api_key: str) -> dict:
@@ -171,17 +222,17 @@ def validate_api_key(api_key: str) -> dict:
             )
             
             if response.status_code == 401:
-                console.print("[red]Invalid API key. Please check and try again.[/red]")
+                console.print("[danger]Invalid API key. Please check and try again.[/danger]")
                 sys.exit(1)
             elif response.status_code != 200:
-                console.print(f"[red]Server error: {response.status_code}[/red]")
-                console.print(f"[dim]{response.text}[/dim]")
+                console.print(f"[danger]Server error: {response.status_code}[/danger]")
+                console.print(f"[muted]{response.text}[/muted]")
                 sys.exit(1)
             
             return response.json()
             
         except httpx.RequestError as e:
-            console.print(f"[red]Failed to connect to HyperAide API: {e}[/red]")
+            console.print(f"[danger]Failed to connect to HyperAide API: {e}[/danger]")
             sys.exit(1)
 
 
@@ -228,12 +279,13 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
     cookies = []
 
     console.print()
-    console.print(Panel(
-        "[bold green]Opening browser...[/bold green]\n\n"
-        "Log into the sites you want HyperAide to access.\n"
-        "Close the browser when you're done to sync your authentication.",
+    print_panel(
+        "[success]Opening a browser window.[/success]\n\n"
+        "Sign in to the sites you want HyperAide to access.\n"
+        "When finished, close the browser to sync your authentication.",
         title="Browser Session",
-    ))
+        style="info",
+    )
     
     with sync_playwright() as p:
         # Launch browser with persistent context for cookie storage
@@ -270,7 +322,7 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
             page.goto(welcome_url, wait_until="domcontentloaded", timeout=10000)
         except Exception as e:
             # If welcome page fails, show a simple message
-            console.print(f"[dim]Could not load welcome page, continuing anyway...[/dim]")
+            console.print("[muted]Could not load welcome page, continuing anyway...[/muted]")
             page.set_content("""
                 <html><body style="font-family: system-ui; padding: 40px; background: #1a1a2e; color: white;">
                 <h1>HyperAide Browser Sync</h1>
@@ -294,10 +346,10 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
                     # Browser process killed/crashed
                     break
             
-            console.print("\n[green]Browser closed. Processing...[/green]")
+            console.print("\n[success]Browser closed. Processing...[/success]")
                 
         except KeyboardInterrupt:
-            console.print("\n[yellow]Sync cancelled by user.[/yellow]")
+            console.print("\n[warning]Sync cancelled by user.[/warning]")
         
         # Explicitly close browser to avoid "Future exception" warning
         try:
@@ -339,18 +391,18 @@ def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str])
             if response.status_code == 400:
                 error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
                 error_msg = error_data.get("error", "No cookies provided")
-                console.print(f"[yellow]Sync skipped: {error_msg}[/yellow]")
-                console.print("[dim]No changes were made to your sync.[/dim]")
+                console.print(f"[warning]Sync skipped: {error_msg}[/warning]")
+                console.print("[muted]No changes were made to your sync.[/muted]")
                 return {"connected_sites": []}
             elif response.status_code != 200:
-                console.print(f"[red]Failed to complete sync: {response.status_code}[/red]")
-                console.print(f"[dim]{response.text}[/dim]")
+                console.print(f"[danger]Failed to complete sync: {response.status_code}[/danger]")
+                console.print(f"[muted]{response.text}[/muted]")
                 sys.exit(1)
             
             return response.json()
             
         except httpx.RequestError as e:
-            console.print(f"[red]Failed to complete sync: {e}[/red]")
+            console.print(f"[danger]Failed to complete sync: {e}[/danger]")
             sys.exit(1)
 
 
@@ -361,29 +413,22 @@ def display_results(result: dict):
     console.print()
     
     if not connected_sites:
-        console.print(Panel(
-            "[yellow]No authenticated sites detected.[/yellow]\n\n"
+        print_panel(
+            "[warning]No authenticated sites detected.[/warning]\n\n"
             "Make sure you logged into sites before closing the browser.",
             title="Sync Complete",
-        ))
+            style="warning",
+        )
         return
     
-    # Create table of connected sites
-    table = Table(title="Connected Sites")
-    table.add_column("Site", style="cyan")
-    table.add_column("Domain", style="dim")
-    
-    for site in connected_sites:
-        table.add_row(
-            site.get("display_name", site.get("domain")),
-            site.get("domain"),
-        )
-    
-    console.print(Panel(
-        f"[bold green]Successfully synced {len(connected_sites)} site(s)![/bold green]\n\n"
-        "HyperAide can now perform browser tasks using your logged-in accounts.",
+    table = build_sites_table(connected_sites, "Connected Sites")
+
+    print_panel(
+        f"[success]Synced {len(connected_sites)} site(s).[/success]\n\n"
+        "HyperAide can now use your authenticated sessions.",
         title="Sync Complete",
-    ))
+        style="success",
+    )
     console.print()
     console.print(table)
 
@@ -393,14 +438,15 @@ def sync_browser_auth(api_key: Optional[str] = None):
     Main sync function - opens browser, captures cookies, syncs to HyperAide.
     """
     # Display welcome banner
-    console.print()
-    console.print(Panel(
-        "[bold]HyperAide Browser Auth Sync[/bold]\n\n"
-        "This tool syncs your browser authentication to HyperAide\n"
-        "so your AI assistant can access sites using your accounts.",
-        title="Welcome",
-        border_style="cyan",
-    ))
+    render_section("Welcome")
+    print_panel(
+        "[accent]HyperAide Browser Sync[/accent]\n\n"
+        "Securely share your logged-in sessions with HyperAide.\n"
+        "You'll log in from a real browser window.",
+        title="Getting Started",
+        style="info",
+        subtitle="Estimated time: 1-2 minutes",
+    )
     
     # Require API key
     api_key = require_api_key(api_key)
@@ -412,25 +458,17 @@ def sync_browser_auth(api_key: Optional[str] = None):
     if start_result.get("existing"):
         existing_sites = start_result.get("connected_sites", [])
         
-        console.print()
-        console.print(Panel(
-            f"[yellow]You have an existing sync with {len(existing_sites)} connected site(s).[/yellow]\n\n"
-            "You can add more sites by logging into them in the browser.",
-            title="Existing Sync Found",
-        ))
+        render_section("Existing Sync")
+        print_panel(
+            f"[warning]You already have {len(existing_sites)} connected site(s).[/warning]\n\n"
+            "You can add more sites during this session.",
+            title="Existing Sync",
+            style="warning",
+        )
         
         # Show existing sites
         if existing_sites:
-            table = Table(title="Currently Connected")
-            table.add_column("Site", style="cyan")
-            table.add_column("Domain", style="dim")
-            
-            for site in existing_sites:
-                table.add_row(
-                    site.get("display_name", site.get("domain")),
-                    site.get("domain"),
-                )
-            console.print(table)
+            console.print(build_sites_table(existing_sites, "Currently Connected"))
     
     # Run browser session
     cookies, visited_domains = run_browser_session()
@@ -438,24 +476,24 @@ def sync_browser_auth(api_key: Optional[str] = None):
     # Display captured sites
     if visited_domains:
         table = Table(title="Sites Captured")
-        table.add_column("Domain", style="cyan")
+        table.add_column("Domain", style="accent")
         for domain in sorted(visited_domains):
             table.add_row(domain)
         console.print()
         console.print(table)
-        console.print(f"\n[dim]Found {len(cookies)} auth cookies[/dim]")
+        console.print(f"\n[muted]Found {len(cookies)} auth cookies[/muted]")
     else:
-        console.print("\n[yellow]No sites were visited.[/yellow]")
+        console.print("\n[warning]No sites were visited.[/warning]")
     
     # Check if we have any cookies before syncing
     if not cookies:
-        console.print()
-        console.print(Panel(
-            "[yellow]No authentication cookies were captured.[/yellow]\n\n"
+        print_panel(
+            "[warning]No authentication cookies were captured.[/warning]\n\n"
             "Make sure you logged into sites before closing the browser.\n"
             "No changes were made to your sync.",
             title="No Cookies Found",
-        ))
+            style="warning",
+        )
         return
     
     # Complete sync
@@ -465,7 +503,7 @@ def sync_browser_auth(api_key: Optional[str] = None):
     display_results(result)
     
     console.print()
-    console.print("[dim]You can view and manage your connected sites at https://app.hyperaide.com/browser-connections[/dim]")
+    console.print("[muted]Manage connected sites at https://app.hyperaide.com/browser-connections[/muted]")
 
 
 @app.command()
@@ -496,7 +534,7 @@ def reset(
             default=False,
         )
         if not confirm:
-            console.print("[yellow]Reset cancelled.[/yellow]")
+            console.print("[warning]Reset cancelled.[/warning]")
             return
     
     api_url = get_api_url()
@@ -516,22 +554,22 @@ def reset(
             )
             
             if response.status_code == 401:
-                console.print("[red]Invalid API key.[/red]")
+                console.print("[danger]Invalid API key.[/danger]")
                 sys.exit(1)
             elif response.status_code != 200:
-                console.print(f"[red]Failed to reset: {response.status_code}[/red]")
+                console.print(f"[danger]Failed to reset: {response.status_code}[/danger]")
                 sys.exit(1)
             
-            console.print()
-            console.print(Panel(
-                "[green]Browser sync has been reset.[/green]\n\n"
+            print_panel(
+                "[success]Browser sync has been reset.[/success]\n\n"
                 "All connected sites have been disconnected.\n"
                 "Run [bold]hyperaide-sync[/bold] to sync again.",
                 title="Reset Complete",
-            ))
+                style="success",
+            )
             
         except httpx.RequestError as e:
-            console.print(f"[red]Failed to reset: {e}[/red]")
+            console.print(f"[danger]Failed to reset: {e}[/danger]")
             sys.exit(1)
 
 
@@ -561,10 +599,10 @@ def status(
         )
         
         if response.status_code == 401:
-            console.print("[red]Invalid API key.[/red]")
+            console.print("[danger]Invalid API key.[/danger]")
             sys.exit(1)
         elif response.status_code != 200:
-            console.print(f"[red]Failed to get status: {response.status_code}[/red]")
+            console.print(f"[danger]Failed to get status: {response.status_code}[/danger]")
             sys.exit(1)
         
         data = response.json()
@@ -575,40 +613,36 @@ def status(
         console.print()
         
         if status_text == "not_synced":
-            console.print(Panel(
-                "[yellow]No browser sync configured.[/yellow]\n\n"
+            print_panel(
+                "[warning]No browser sync configured.[/warning]\n\n"
                 "Run [bold]hyperaide-sync[/bold] to sync your browser authentication.",
                 title="Status",
-            ))
+                style="warning",
+            )
             return
         
         # Show connected sites
         if connected_sites:
-            table = Table(title=f"Connected Sites ({len(connected_sites)})")
-            table.add_column("Site", style="cyan")
-            table.add_column("Domain", style="dim")
-            table.add_column("Status", style="green")
-            
-            for site in connected_sites:
-                table.add_row(
-                    site.get("display_name", site.get("domain")),
-                    site.get("domain"),
-                    site.get("status", "active"),
+            console.print(
+                build_sites_table(
+                    connected_sites,
+                    f"Connected Sites ({len(connected_sites)})",
+                    include_status=True,
                 )
-            
-            console.print(table)
+            )
             
             if last_synced:
-                console.print(f"\n[dim]Last synced: {last_synced}[/dim]")
+                console.print(f"\n[muted]Last synced: {last_synced}[/muted]")
         else:
-            console.print(Panel(
-                "[yellow]Browser sync is configured but no sites are connected.[/yellow]\n\n"
+            print_panel(
+                "[warning]Browser sync is configured but no sites are connected.[/warning]\n\n"
                 "Run [bold]hyperaide-sync[/bold] to add sites.",
                 title="Status",
-            ))
+                style="warning",
+            )
             
     except httpx.RequestError as e:
-        console.print(f"[red]Failed to get status: {e}[/red]")
+        console.print(f"[danger]Failed to get status: {e}[/danger]")
         sys.exit(1)
 
 
