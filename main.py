@@ -103,7 +103,7 @@ def sync_command(
 # Configuration
 DEFAULT_API_URL = "https://api.hyperaide.com"
 DEV_API_URL = "http://localhost:4000"
-DEFAULT_WELCOME_URL = "https://hyperaide.com/browser-sync/welcome"
+DEFAULT_WELCOME_URL = "https://app.hyperaide.com/browser-sync/welcome"
 DEV_WELCOME_URL = "http://localhost:3000/browser-sync/welcome"
 
 # Auth-related cookie name patterns
@@ -465,7 +465,7 @@ def sync_browser_auth(api_key: Optional[str] = None):
     display_results(result)
     
     console.print()
-    console.print("[dim]You can view and manage your connected sites at https://hyperaide.com/browser-connections[/dim]")
+    console.print("[dim]You can view and manage your connected sites at https://app.hyperaide.com/browser-connections[/dim]")
 
 
 @app.command()
