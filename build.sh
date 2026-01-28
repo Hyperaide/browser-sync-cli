@@ -77,6 +77,7 @@ pyinstaller \
     --hidden-import playwright._impl._driver \
     --collect-all playwright \
     --collect-all pyfiglet \
+    --hidden-import pyfiglet.fonts \
     --noconfirm \
     --clean \
     main.py
