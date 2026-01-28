@@ -1,8 +1,7 @@
-#!/usr/bin/env python3
 """
-HyperAide Browser Auth Sync CLI
+Hyperaide Browser Auth Sync CLI
 
-Syncs your local browser authentication state to HyperAide so the AI agent
+Syncs your local browser authentication state to Hyperaide so the AI agent
 can perform browser automation tasks using your logged-in accounts.
 
 Usage:
@@ -38,29 +37,31 @@ setup_bundled_playwright()
 
 import httpx
 import typer
+import pyfiglet
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.rule import Rule
 from rich.table import Table
 from rich.theme import Theme
+from rich import box
 from playwright.sync_api import sync_playwright
 
-THEME = Theme(
-    {
-        "info": "cyan",
-        "warning": "yellow",
-        "danger": "red",
-        "success": "green",
-        "muted": "dim",
-        "accent": "bold cyan",
-    }
-)
+# Modern "Vercel-like" Theme
+THEME = Theme({
+    "info": "white",
+    "warning": "yellow",
+    "danger": "red",
+    "success": "green",
+    "muted": "dim white",
+    "accent": "bold cyan",
+    "logo": "bold blue",
+})
 
 # Initialize Typer app and Rich console
 app = typer.Typer(
     name="hyperaide-sync",
-    help="Sync your browser authentication to HyperAide",
+    help="Sync your browser authentication to Hyperaide",
     add_completion=False,
     invoke_without_command=True,  # Allow running without subcommand
 )
@@ -78,15 +79,15 @@ def callback(
         "--dev",
         help="Use development API server (localhost:3000)",
     ),
-    api_key: Optional[str] = typer.Option(
+    token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key (or set HYPERAIDE_API_KEY env var)",
-        envvar="HYPERAIDE_API_KEY",
+        "--token", "-t",
+        help="Hyperaide sync token (or set HYPERAIDE_SYNC_TOKEN env var)",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
 ):
     """
-    HyperAide Browser Auth Sync - sync your browser authentication.
+    Hyperaide Browser Auth Sync - sync your browser authentication.
     """
     global _dev_mode
     _dev_mode = dev
@@ -96,22 +97,22 @@ def callback(
     
     # If no subcommand, run the sync (main) command
     if ctx.invoked_subcommand is None:
-        sync_browser_auth(api_key=api_key)
+        sync_browser_auth(token=token)
 
 
 @app.command(name="sync")
 def sync_command(
-    api_key: Optional[str] = typer.Option(
+    token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key (or set HYPERAIDE_API_KEY env var)",
-        envvar="HYPERAIDE_API_KEY",
+        "--token", "-t",
+        help="Hyperaide sync token (or set HYPERAIDE_SYNC_TOKEN env var)",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
 ):
     """
-    Sync your browser authentication to HyperAide.
+    Sync your browser authentication to Hyperaide.
     """
-    sync_browser_auth(api_key=api_key)
+    sync_browser_auth(token=token)
 
 # Configuration
 DEFAULT_API_URL = "https://api.hyperaide.com"
@@ -146,52 +147,91 @@ def get_welcome_url() -> str:
     return DEFAULT_WELCOME_URL
 
 
-def get_api_key() -> Optional[str]:
-    """Get API key from environment variable."""
-    return os.environ.get("HYPERAIDE_API_KEY")
+def get_token() -> Optional[str]:
+    """Get sync token from environment variable."""
+    return os.environ.get("HYPERAIDE_SYNC_TOKEN")
 
 
-def require_api_key(api_key: Optional[str]) -> str:
-    """Require API key from argument or environment, exit if missing."""
-    if api_key:
-        return api_key
+def require_token(token: Optional[str]) -> str:
+    """Require sync token from argument or environment, exit if missing."""
+    if token:
+        return token
     
-    env_key = get_api_key()
-    if env_key:
-        return env_key
+    env_token = get_token()
+    if env_token:
+        return env_token
     
-    console.print("[danger]Missing API key.[/danger]")
-    console.print("[muted]Usage: HYPERAIDE_API_KEY=your_key hyperaide-sync[/muted]")
+    console.print("[danger]✖ Missing sync token[/danger]")
+    console.print("[muted]  Usage: HYPERAIDE_SYNC_TOKEN=your_token hyperaide-sync[/muted]")
     sys.exit(1)
 
 
-def print_panel(message: str, title: str, style: str = "info", subtitle: str | None = None) -> None:
-    """Render a consistent panel style."""
-    console.print(
-        Panel(
-            message,
-            title=title,
-            border_style=style,
-            subtitle=subtitle,
-        )
-    )
+# --- UI Helpers ---
 
+from rich.text import Text
 
-def render_section(title: str) -> None:
-    console.print()
-    console.print(Rule(title, style="muted"))
+def print_logo():
+    """Print the ASCII logo with a gradient."""
+    f = pyfiglet.Figlet(font='ansi_shadow')
+    ascii_art = f.renderText('Hyperaide')
+    
+    # Create a simple vertical gradient (blue to cyan)
+    text = Text(ascii_art)
+    
+    # Simple logic: Split lines and color them progressively
+    # Rich doesn't have a built-in "gradient" for a single block of text easily,
+    # so we'll just style it with a nice consistent cyan/blue look for now.
+    # To do a true gradient requires iteration character by character which is complex for ASCII art.
+    # Instead, we'll use a bold style that looks great on dark terminals.
+    
+    # White to Gray gradient
+    # Top is bright white, fading down to gray
+    lines = ascii_art.splitlines()
+    # Hex codes: White -> Light Gray -> Darker Gray
+    colors = ["#FFFFFF", "#EEEEEE", "#DDDDDD", "#BBBBBB", "#999999", "#777777"]
+    
+    for i, line in enumerate(lines):
+        color = colors[min(i, len(colors)-1)]
+        console.print(line, style=f"bold {color}")
 
+    console.print("  Browser Auth Sync CLI\n", style="muted")
+
+def print_step(message: str, emoji: str = "•") -> None:
+    """Clean, minimal step output."""
+    console.print(f"[accent]{emoji}[/accent]  {message}")
+
+def print_subtle(message: str, padding: int = 4) -> None:
+    """Dimmed instructional text."""
+    pad = " " * padding
+    console.print(f"{pad}[muted]{message}[/muted]")
+
+def print_success(message: str) -> None:
+    console.print(f"[success]✔[/success]  {message}")
+
+def print_error(message: str) -> None:
+    console.print(f"[danger]✖  {message}[/danger]")
+
+def print_header(title: str) -> None:
+    console.print(f"\n[bold white]{title}[/bold white]")
 
 def build_sites_table(
     sites: list[dict],
-    title: str,
+    title: Optional[str] = None,
     include_status: bool = False,
 ) -> Table:
-    table = Table(title=title)
-    table.add_column("Site", style="accent")
+    table = Table(
+        box=box.SIMPLE, 
+        show_header=True, 
+        header_style="bold muted",
+        pad_edge=False,
+        collapse_padding=True
+    )
+    
+    table.add_column("Site")
     table.add_column("Domain", style="muted")
     if include_status:
         table.add_column("Status", style="success")
+        
     for site in sites:
         row = [
             site.get("display_name", site.get("domain")),
@@ -200,39 +240,35 @@ def build_sites_table(
         if include_status:
             row.append(site.get("status", "active"))
         table.add_row(*row)
+        
     return table
 
+# --- Logic ---
 
-def validate_api_key(api_key: str) -> dict:
-    """Validate API key with the server and start sync session."""
+def validate_token(token: str) -> dict:
+    """Validate sync token with the server and start sync session."""
     api_url = get_api_url()
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        progress.add_task("Validating API key...", total=None)
-        
+    with console.status("[bold]Connecting to Hyperaide...[/bold]", spinner="dots"):
         try:
             response = httpx.post(
                 f"{api_url}/api/v1/browser_sync/start",
-                headers={"x-api-key": api_key},
+                headers={"x-api-key": token},  # Server still expects x-api-key header
                 timeout=30,
             )
             
             if response.status_code == 401:
-                console.print("[danger]Invalid API key. Please check and try again.[/danger]")
+                print_error("Invalid sync token")
                 sys.exit(1)
             elif response.status_code != 200:
-                console.print(f"[danger]Server error: {response.status_code}[/danger]")
-                console.print(f"[muted]{response.text}[/muted]")
+                print_error(f"Server error: {response.status_code}")
+                print_subtle(response.text)
                 sys.exit(1)
             
             return response.json()
             
         except httpx.RequestError as e:
-            console.print(f"[danger]Failed to connect to HyperAide API: {e}[/danger]")
+            print_error(f"Failed to connect: {e}")
             sys.exit(1)
 
 
@@ -271,21 +307,15 @@ def extract_domain_from_url(url: str) -> str:
 def run_browser_session() -> tuple[list[dict], list[str]]:
     """
     Launch browser, let user log in, and capture cookies on close.
-    
-    Returns:
-        Tuple of (cookies, visited_domains)
     """
     visited_domains: set[str] = set()
     cookies = []
 
-    console.print()
-    print_panel(
-        "[success]Opening a browser window.[/success]\n\n"
-        "Sign in to the sites you want HyperAide to access.\n"
-        "When finished, close the browser to sync your authentication.",
-        title="Browser Session",
-        style="info",
-    )
+    print_step("Opening secure browser window...", emoji="🔒")
+    print_subtle("Log in to your sites. Close the browser when done.")
+    
+    # Small pause for UX
+    time.sleep(1)
     
     with sync_playwright() as p:
         # Launch browser with persistent context for cookie storage
@@ -322,40 +352,40 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
             page.goto(welcome_url, wait_until="domcontentloaded", timeout=10000)
         except Exception as e:
             # If welcome page fails, show a simple message
-            console.print("[muted]Could not load welcome page, continuing anyway...[/muted]")
+            print_subtle("Could not load welcome page, continuing anyway...")
             page.set_content("""
                 <html><body style="font-family: system-ui; padding: 40px; background: #1a1a2e; color: white;">
-                <h1>HyperAide Browser Sync</h1>
-                <p>Open new tabs and log into the sites you want HyperAide to access.</p>
+                <h1>Hyperaide Browser Sync</h1>
+                <p>Open new tabs and log into the sites you want Hyperaide to access.</p>
                 <p><strong>Close the browser when you're done to sync your authentication.</strong></p>
                 </body></html>
             """)
 
         # Wait for browser to be closed by user
-        try:
-            while True:
-                try:
-                    # User manually closed the window
-                    if not context.pages:
-                        break
+        with console.status("[bold]Waiting for browser session...[/bold]", spinner="dots"):
+            try:
+                while True:
+                    try:
+                        # User manually closed the window
+                        if not context.pages:
+                            break
 
-                    # Keep capturing cookies while valid
-                    cookies = context.cookies()
-                    time.sleep(0.5)
-                except Exception:
-                    # Browser process killed/crashed
-                    break
-            
-            console.print("\n[success]Browser closed. Processing...[/success]")
-                
-        except KeyboardInterrupt:
-            console.print("\n[warning]Sync cancelled by user.[/warning]")
+                        # Keep capturing cookies while valid
+                        cookies = context.cookies()
+                        time.sleep(0.5)
+                    except Exception:
+                        # Browser process killed/crashed
+                        break
+            except KeyboardInterrupt:
+                console.print()
+                print_error("Sync cancelled")
+                return [], []
         
-        # Explicitly close browser to avoid "Future exception" warning
+        # Explicitly close browser
         try:
             browser.close()
         except Exception:
-            pass  # Already closed by user
+            pass
         
         # Filter to auth-relevant cookies
         auth_cookies = [c for c in cookies if is_auth_cookie(c)]
@@ -363,22 +393,16 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
         return auth_cookies, list(visited_domains)
 
 
-def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str]) -> dict:
+def complete_sync(token: str, cookies: list[dict], visited_domains: list[str]) -> dict:
     """Send cookies to server to complete sync."""
     api_url = get_api_url()
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        progress.add_task("Syncing authentication...", total=None)
-        
+    with console.status("[bold]Encrypting and uploading...[/bold]", spinner="dots"):
         try:
             response = httpx.post(
                 f"{api_url}/api/v1/browser_sync/complete",
                 headers={
-                    "x-api-key": api_key,
+                    "x-api-key": token,
                     "Content-Type": "application/json",
                 },
                 json={
@@ -391,18 +415,17 @@ def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str])
             if response.status_code == 400:
                 error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
                 error_msg = error_data.get("error", "No cookies provided")
-                console.print(f"[warning]Sync skipped: {error_msg}[/warning]")
-                console.print("[muted]No changes were made to your sync.[/muted]")
+                print_error(f"Sync skipped: {error_msg}")
                 return {"connected_sites": []}
             elif response.status_code != 200:
-                console.print(f"[danger]Failed to complete sync: {response.status_code}[/danger]")
-                console.print(f"[muted]{response.text}[/muted]")
+                print_error(f"Failed to complete sync: {response.status_code}")
+                print_subtle(response.text)
                 sys.exit(1)
             
             return response.json()
             
         except httpx.RequestError as e:
-            console.print(f"[danger]Failed to complete sync: {e}[/danger]")
+            print_error(f"Failed to complete sync: {e}")
             sys.exit(1)
 
 
@@ -410,109 +433,72 @@ def display_results(result: dict):
     """Display sync results to user."""
     connected_sites = result.get("connected_sites", [])
     
-    console.print()
-    
     if not connected_sites:
-        print_panel(
-            "[warning]No authenticated sites detected.[/warning]\n\n"
-            "Make sure you logged into sites before closing the browser.",
-            title="Sync Complete",
-            style="warning",
-        )
+        print_error("No authenticated sites detected")
+        print_subtle("Did you log in before closing the browser?")
         return
     
-    table = build_sites_table(connected_sites, "Connected Sites")
-
-    print_panel(
-        f"[success]Synced {len(connected_sites)} site(s).[/success]\n\n"
-        "HyperAide can now use your authenticated sessions.",
-        title="Sync Complete",
-        style="success",
-    )
+    print_success(f"Successfully synced {len(connected_sites)} site(s)")
+    
     console.print()
-    console.print(table)
+    console.print(build_sites_table(connected_sites))
 
 
-def sync_browser_auth(api_key: Optional[str] = None):
+def sync_browser_auth(token: Optional[str] = None):
     """
-    Main sync function - opens browser, captures cookies, syncs to HyperAide.
+    Main sync function - opens browser, captures cookies, syncs to Hyperaide.
     """
-    # Display welcome banner
-    render_section("Welcome")
-    print_panel(
-        "[accent]HyperAide Browser Sync[/accent]\n\n"
-        "Securely share your logged-in sessions with HyperAide.\n"
-        "You'll log in from a real browser window.",
-        title="Getting Started",
-        style="info",
-        subtitle="Estimated time: 1-2 minutes",
-    )
+    console.clear()
+    print_logo()
     
-    # Require API key
-    api_key = require_api_key(api_key)
+    # Require sync token
+    token = require_token(token)
     
-    # Validate API key and start sync session
-    start_result = validate_api_key(api_key)
+    # Validate token and start sync session
+    start_result = validate_token(token)
     
     # Check if user has existing context
     if start_result.get("existing"):
         existing_sites = start_result.get("connected_sites", [])
         
-        render_section("Existing Sync")
-        print_panel(
-            f"[warning]You already have {len(existing_sites)} connected site(s).[/warning]\n\n"
-            "You can add more sites during this session.",
-            title="Existing Sync",
-            style="warning",
-        )
-        
-        # Show existing sites
         if existing_sites:
-            console.print(build_sites_table(existing_sites, "Currently Connected"))
+            print_step(f"Found {len(existing_sites)} previously connected site(s)")
+            # console.print(build_sites_table(existing_sites))
+            console.print()
     
     # Run browser session
     cookies, visited_domains = run_browser_session()
     
-    # Display captured sites
+    # Display captured sites (debug/feedback)
     if visited_domains:
-        table = Table(title="Sites Captured")
-        table.add_column("Domain", style="accent")
-        for domain in sorted(visited_domains):
-            table.add_row(domain)
-        console.print()
-        console.print(table)
-        console.print(f"\n[muted]Found {len(cookies)} auth cookies[/muted]")
+        print_step(f"Captured session data from {len(visited_domains)} domain(s)")
     else:
-        console.print("\n[warning]No sites were visited.[/warning]")
+        print_step("No domains visited")
     
     # Check if we have any cookies before syncing
     if not cookies:
-        print_panel(
-            "[warning]No authentication cookies were captured.[/warning]\n\n"
-            "Make sure you logged into sites before closing the browser.\n"
-            "No changes were made to your sync.",
-            title="No Cookies Found",
-            style="warning",
-        )
+        print_error("No authentication cookies captured")
         return
     
     # Complete sync
-    result = complete_sync(api_key, cookies, visited_domains)
+    result = complete_sync(token, cookies, visited_domains)
     
     # Display results
+    console.print()
     display_results(result)
     
     console.print()
-    console.print("[muted]Manage connected sites at https://app.hyperaide.com/browser-connections[/muted]")
+    print_subtle("Manage connected sites at https://app.hyperaide.com/browser-connections", padding=2)
+    console.print()
 
 
 @app.command()
 def reset(
-    api_key: Optional[str] = typer.Option(
+    token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key",
-        envvar="HYPERAIDE_API_KEY",
+        "--token", "-t",
+        help="Hyperaide sync token",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
     force: bool = typer.Option(
         False,
@@ -523,9 +509,10 @@ def reset(
     """
     Reset your browser sync and disconnect all sites.
     """
+    print_logo()
     
-    # Require API key
-    api_key = require_api_key(api_key)
+    # Require sync token
+    token = require_token(token)
     
     # Confirm reset
     if not force:
@@ -534,116 +521,95 @@ def reset(
             default=False,
         )
         if not confirm:
-            console.print("[warning]Reset cancelled.[/warning]")
+            print_subtle("Reset cancelled")
             return
     
     api_url = get_api_url()
     
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-    ) as progress:
-        progress.add_task("Resetting browser sync...", total=None)
-        
+    with console.status("[bold]Resetting browser sync...[/bold]", spinner="dots"):
         try:
             response = httpx.delete(
                 f"{api_url}/api/v1/browser_sync",
-                headers={"x-api-key": api_key},
+                headers={"x-api-key": token},
                 timeout=30,
             )
             
             if response.status_code == 401:
-                console.print("[danger]Invalid API key.[/danger]")
+                print_error("Invalid sync token")
                 sys.exit(1)
             elif response.status_code != 200:
-                console.print(f"[danger]Failed to reset: {response.status_code}[/danger]")
+                print_error(f"Failed to reset: {response.status_code}")
                 sys.exit(1)
             
-            print_panel(
-                "[success]Browser sync has been reset.[/success]\n\n"
-                "All connected sites have been disconnected.\n"
-                "Run [bold]hyperaide-sync[/bold] to sync again.",
-                title="Reset Complete",
-                style="success",
-            )
+            print_success("Browser sync has been reset")
+            print_subtle("Run hyperaide-sync to start a new session")
             
         except httpx.RequestError as e:
-            console.print(f"[danger]Failed to reset: {e}[/danger]")
+            print_error(f"Failed to reset: {e}")
             sys.exit(1)
 
 
 @app.command()
 def status(
-    api_key: Optional[str] = typer.Option(
+    token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key",
-        envvar="HYPERAIDE_API_KEY",
+        "--token", "-t",
+        help="Hyperaide sync token",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
 ):
     """
     Check your current browser sync status.
     """
+    print_logo()
     
-    # Require API key
-    api_key = require_api_key(api_key)
+    # Require sync token
+    token = require_token(token)
     
     api_url = get_api_url()
     
-    try:
-        response = httpx.get(
-            f"{api_url}/api/v1/browser_sync",
-            headers={"x-api-key": api_key},
-            timeout=30,
-        )
-        
-        if response.status_code == 401:
-            console.print("[danger]Invalid API key.[/danger]")
-            sys.exit(1)
-        elif response.status_code != 200:
-            console.print(f"[danger]Failed to get status: {response.status_code}[/danger]")
-            sys.exit(1)
-        
-        data = response.json()
-        connected_sites = data.get("connected_sites", [])
-        status_text = data.get("status", "unknown")
-        last_synced = data.get("last_synced_at")
-        
-        console.print()
-        
-        if status_text == "not_synced":
-            print_panel(
-                "[warning]No browser sync configured.[/warning]\n\n"
-                "Run [bold]hyperaide-sync[/bold] to sync your browser authentication.",
-                title="Status",
-                style="warning",
+    with console.status("[bold]Fetching status...[/bold]", spinner="dots"):
+        try:
+            response = httpx.get(
+                f"{api_url}/api/v1/browser_sync",
+                headers={"x-api-key": token},
+                timeout=30,
             )
-            return
-        
-        # Show connected sites
-        if connected_sites:
-            console.print(
-                build_sites_table(
-                    connected_sites,
-                    f"Connected Sites ({len(connected_sites)})",
-                    include_status=True,
+            
+            if response.status_code == 401:
+                print_error("Invalid sync token")
+                sys.exit(1)
+            elif response.status_code != 200:
+                print_error(f"Failed to get status: {response.status_code}")
+                sys.exit(1)
+            
+            data = response.json()
+            connected_sites = data.get("connected_sites", [])
+            status_text = data.get("status", "unknown")
+            last_synced = data.get("last_synced_at")
+            
+            if status_text == "not_synced":
+                print_step("No browser sync configured", emoji="○")
+                print_subtle("Run hyperaide-sync to sync your browser authentication")
+                return
+            
+            # Show connected sites
+            if connected_sites:
+                console.print(
+                    build_sites_table(
+                        connected_sites,
+                        include_status=True,
+                    )
                 )
-            )
-            
-            if last_synced:
-                console.print(f"\n[muted]Last synced: {last_synced}[/muted]")
-        else:
-            print_panel(
-                "[warning]Browser sync is configured but no sites are connected.[/warning]\n\n"
-                "Run [bold]hyperaide-sync[/bold] to add sites.",
-                title="Status",
-                style="warning",
-            )
-            
-    except httpx.RequestError as e:
-        console.print(f"[danger]Failed to get status: {e}[/danger]")
-        sys.exit(1)
+                
+                if last_synced:
+                    console.print(f"\n[muted]Last synced: {last_synced}[/muted]")
+            else:
+                print_step("Browser sync is active but no sites are connected", emoji="⚠")
+                
+        except httpx.RequestError as e:
+            print_error(f"Failed to get status: {e}")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
