@@ -58,15 +58,15 @@ def dim(text: str) -> str:
 
 
 def success(text: str) -> str:
-    return f"[green]✓[/green] {text}"
+    return f"[green]+[/green] {text}"
 
 
 def error(text: str) -> str:
-    return f"[red]✗[/red] {text}"
+    return f"[red]x[/red] {text}"
 
 
 def info(text: str) -> str:
-    return f"[blue]→[/blue] {text}"
+    return f"[blue]>[/blue] {text}"
 
 
 def warn(text: str) -> str:
@@ -385,7 +385,7 @@ def status(
         console.print()
         for site in connected_sites:
             name = site.get("display_name", site.get("domain"))
-            console.print(f"    [green]●[/green] {name}")
+            console.print(f"    [green]*[/green] {name}")
 
     console.print()
 
