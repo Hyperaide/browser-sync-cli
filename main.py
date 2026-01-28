@@ -65,11 +65,11 @@ def callback(
         "--dev",
         help="Use development API server (localhost:3000)",
     ),
-    api_key: Optional[str] = typer.Option(
+    sync_token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key (or set HYPERAIDE_API_KEY env var)",
-        envvar="HYPERAIDE_API_KEY",
+        "--sync-token", "-t",
+        help="HyperAide sync token (or set HYPERAIDE_SYNC_TOKEN env var)",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
 ):
     """
@@ -77,28 +77,28 @@ def callback(
     """
     global _dev_mode
     _dev_mode = dev
-    
+
     if dev:
         os.environ["HYPERAIDE_DEV"] = "1"
-    
+
     # If no subcommand, run the sync (main) command
     if ctx.invoked_subcommand is None:
-        sync_browser_auth(api_key=api_key)
+        sync_browser_auth(sync_token=sync_token)
 
 
 @app.command(name="sync")
 def sync_command(
-    api_key: Optional[str] = typer.Option(
+    sync_token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key (or set HYPERAIDE_API_KEY env var)",
-        envvar="HYPERAIDE_API_KEY",
+        "--sync-token", "-t",
+        help="HyperAide sync token (or set HYPERAIDE_SYNC_TOKEN env var)",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
 ):
     """
     Sync your browser authentication to HyperAide.
     """
-    sync_browser_auth(api_key=api_key)
+    sync_browser_auth(sync_token=sync_token)
 
 # Configuration
 DEFAULT_API_URL = "https://api.hyperaide.com"
@@ -133,53 +133,53 @@ def get_welcome_url() -> str:
     return DEFAULT_WELCOME_URL
 
 
-def get_api_key() -> Optional[str]:
-    """Get API key from environment variable."""
-    return os.environ.get("HYPERAIDE_API_KEY")
+def get_sync_token() -> Optional[str]:
+    """Get sync token from environment variable."""
+    return os.environ.get("HYPERAIDE_SYNC_TOKEN")
 
 
-def require_api_key(api_key: Optional[str]) -> str:
-    """Require API key from argument or environment, exit if missing."""
-    if api_key:
-        return api_key
-    
-    env_key = get_api_key()
-    if env_key:
-        return env_key
-    
-    console.print("[red]Error: HYPERAIDE_API_KEY environment variable is required.[/red]")
-    console.print("[dim]Usage: HYPERAIDE_API_KEY=your_key hyperaide-sync[/dim]")
+def require_sync_token(sync_token: Optional[str]) -> str:
+    """Require sync token from argument or environment, exit if missing."""
+    if sync_token:
+        return sync_token
+
+    env_token = get_sync_token()
+    if env_token:
+        return env_token
+
+    console.print("[red]Error: HYPERAIDE_SYNC_TOKEN environment variable is required.[/red]")
+    console.print("[dim]Usage: HYPERAIDE_SYNC_TOKEN=your_token hyperaide-sync[/dim]")
     sys.exit(1)
 
 
-def validate_api_key(api_key: str) -> dict:
-    """Validate API key with the server and start sync session."""
+def validate_sync_token(sync_token: str) -> dict:
+    """Validate sync token with the server and start sync session."""
     api_url = get_api_url()
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        progress.add_task("Validating API key...", total=None)
-        
+        progress.add_task("Validating sync token...", total=None)
+
         try:
             response = httpx.post(
                 f"{api_url}/api/v1/browser_sync/start",
-                headers={"x-api-key": api_key},
+                headers={"x-sync-token": sync_token},
                 timeout=30,
             )
-            
+
             if response.status_code == 401:
-                console.print("[red]Invalid API key. Please check and try again.[/red]")
+                console.print("[red]Invalid sync token. Please check and try again.[/red]")
                 sys.exit(1)
             elif response.status_code != 200:
                 console.print(f"[red]Server error: {response.status_code}[/red]")
                 console.print(f"[dim]{response.text}[/dim]")
                 sys.exit(1)
-            
+
             return response.json()
-            
+
         except httpx.RequestError as e:
             console.print(f"[red]Failed to connect to HyperAide API: {e}[/red]")
             sys.exit(1)
@@ -311,22 +311,22 @@ def run_browser_session() -> tuple[list[dict], list[str]]:
         return auth_cookies, list(visited_domains)
 
 
-def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str]) -> dict:
+def complete_sync(sync_token: str, cookies: list[dict], visited_domains: list[str]) -> dict:
     """Send cookies to server to complete sync."""
     api_url = get_api_url()
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
         progress.add_task("Syncing authentication...", total=None)
-        
+
         try:
             response = httpx.post(
                 f"{api_url}/api/v1/browser_sync/complete",
                 headers={
-                    "x-api-key": api_key,
+                    "x-sync-token": sync_token,
                     "Content-Type": "application/json",
                 },
                 json={
@@ -335,7 +335,7 @@ def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str])
                 },
                 timeout=60,
             )
-            
+
             if response.status_code == 400:
                 error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
                 error_msg = error_data.get("error", "No cookies provided")
@@ -346,9 +346,9 @@ def complete_sync(api_key: str, cookies: list[dict], visited_domains: list[str])
                 console.print(f"[red]Failed to complete sync: {response.status_code}[/red]")
                 console.print(f"[dim]{response.text}[/dim]")
                 sys.exit(1)
-            
+
             return response.json()
-            
+
         except httpx.RequestError as e:
             console.print(f"[red]Failed to complete sync: {e}[/red]")
             sys.exit(1)
@@ -388,7 +388,7 @@ def display_results(result: dict):
     console.print(table)
 
 
-def sync_browser_auth(api_key: Optional[str] = None):
+def sync_browser_auth(sync_token: Optional[str] = None):
     """
     Main sync function - opens browser, captures cookies, syncs to HyperAide.
     """
@@ -401,12 +401,12 @@ def sync_browser_auth(api_key: Optional[str] = None):
         title="Welcome",
         border_style="cyan",
     ))
-    
-    # Require API key
-    api_key = require_api_key(api_key)
-    
-    # Validate API key and start sync session
-    start_result = validate_api_key(api_key)
+
+    # Require sync token
+    sync_token = require_sync_token(sync_token)
+
+    # Validate sync token and start sync session
+    start_result = validate_sync_token(sync_token)
     
     # Check if user has existing context
     if start_result.get("existing"):
@@ -459,7 +459,7 @@ def sync_browser_auth(api_key: Optional[str] = None):
         return
     
     # Complete sync
-    result = complete_sync(api_key, cookies, visited_domains)
+    result = complete_sync(sync_token, cookies, visited_domains)
     
     # Display results
     display_results(result)
@@ -470,11 +470,11 @@ def sync_browser_auth(api_key: Optional[str] = None):
 
 @app.command()
 def reset(
-    api_key: Optional[str] = typer.Option(
+    sync_token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key",
-        envvar="HYPERAIDE_API_KEY",
+        "--sync-token", "-t",
+        help="HyperAide sync token",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
     force: bool = typer.Option(
         False,
@@ -485,10 +485,10 @@ def reset(
     """
     Reset your browser sync and disconnect all sites.
     """
-    
-    # Require API key
-    api_key = require_api_key(api_key)
-    
+
+    # Require sync token
+    sync_token = require_sync_token(sync_token)
+
     # Confirm reset
     if not force:
         confirm = typer.confirm(
@@ -498,30 +498,30 @@ def reset(
         if not confirm:
             console.print("[yellow]Reset cancelled.[/yellow]")
             return
-    
+
     api_url = get_api_url()
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
         progress.add_task("Resetting browser sync...", total=None)
-        
+
         try:
             response = httpx.delete(
                 f"{api_url}/api/v1/browser_sync",
-                headers={"x-api-key": api_key},
+                headers={"x-sync-token": sync_token},
                 timeout=30,
             )
-            
+
             if response.status_code == 401:
-                console.print("[red]Invalid API key.[/red]")
+                console.print("[red]Invalid sync token.[/red]")
                 sys.exit(1)
             elif response.status_code != 200:
                 console.print(f"[red]Failed to reset: {response.status_code}[/red]")
                 sys.exit(1)
-            
+
             console.print()
             console.print(Panel(
                 "[green]Browser sync has been reset.[/green]\n\n"
@@ -529,7 +529,7 @@ def reset(
                 "Run [bold]hyperaide-sync[/bold] to sync again.",
                 title="Reset Complete",
             ))
-            
+
         except httpx.RequestError as e:
             console.print(f"[red]Failed to reset: {e}[/red]")
             sys.exit(1)
@@ -537,31 +537,31 @@ def reset(
 
 @app.command()
 def status(
-    api_key: Optional[str] = typer.Option(
+    sync_token: Optional[str] = typer.Option(
         None,
-        "--api-key", "-k",
-        help="HyperAide API key",
-        envvar="HYPERAIDE_API_KEY",
+        "--sync-token", "-t",
+        help="HyperAide sync token",
+        envvar="HYPERAIDE_SYNC_TOKEN",
     ),
 ):
     """
     Check your current browser sync status.
     """
-    
-    # Require API key
-    api_key = require_api_key(api_key)
-    
+
+    # Require sync token
+    sync_token = require_sync_token(sync_token)
+
     api_url = get_api_url()
-    
+
     try:
         response = httpx.get(
             f"{api_url}/api/v1/browser_sync",
-            headers={"x-api-key": api_key},
+            headers={"x-sync-token": sync_token},
             timeout=30,
         )
-        
+
         if response.status_code == 401:
-            console.print("[red]Invalid API key.[/red]")
+            console.print("[red]Invalid sync token.[/red]")
             sys.exit(1)
         elif response.status_code != 200:
             console.print(f"[red]Failed to get status: {response.status_code}[/red]")
